@@ -1,0 +1,15 @@
+api_platform:
+    title: Stonker API
+    description: Portfolio tracker for stocks & ETFs (DeGiro, IBKR) — manual + import, per-currency P/L.
+    version: 1.0.0
+    defaults:
+        stateless: true
+        cache_headers:
+            vary: ['Content-Type', 'Authorization', 'Origin']
+    formats:
+        jsonld: ['application/ld+json']
+        json: ['application/json']
+    docs_formats:
+        jsonld: ['application/ld+json']
+        json: ['application/json']
+        html: ['text/html']

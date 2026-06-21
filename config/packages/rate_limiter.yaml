@@ -1,0 +1,45 @@
+framework:
+    rate_limiter:
+        # Twelve Data free tier: 8 API credits/minute. Capacity 1 + one token
+        # every 8s paces requests strictly (~7.5/min), so a fetch of many
+        # instruments never bursts past the limit (no 429s). Refilling per-token
+        # (not 8-at-once-per-minute) keeps the spacing smooth. Shared via the
+        # cache pool, so the CLI and the scheduled worker draw from one budget.
+        twelve_data:
+            policy: token_bucket
+            limit: 1
+            rate: { interval: '8 seconds', amount: 1 }
+            lock_factory: null
+            cache_pool: cache.app
+
+        # Yahoo (unofficial) tightened enforcement in late 2024; the referenced
+        # soft limit is ~360 requests/hour (≈6/min). Pace strictly at 1 per 10s,
+        # no burst, to stay under it. Budget is shared via the cache pool across
+        # the CLI and the worker, and the ISIN→symbol cache halves the calls.
+        # Each uncached instrument still costs 2 calls (ISIN search + quote), so a
+        # first run of N instruments takes ~N*20s — slow by design.
+        yahoo_finance:
+            policy: token_bucket
+            limit: 1
+            rate: { interval: '10 seconds', amount: 1 }
+            lock_factory: null
+            cache_pool: cache.app
+
+        # EODHD free tier: 20 API calls/day. Hard cap with a rolling 24h window,
+        # consumed non-blocking — once the budget is spent the provider skips and
+        # falls back (or keeps the last snapshot). Shared across CLI + worker via
+        # the cache pool. ~2 full portfolio fetches/day at ~8-9 instruments each.
+        eodhd:
+            policy: sliding_window
+            limit: 20
+            interval: '1 day'
+            lock_factory: null
+            cache_pool: cache.app
+
+        # OpenFIGI without a key allows ~25 requests/min; ~20/min keeps margin.
+        openfigi:
+            policy: token_bucket
+            limit: 5
+            rate: { interval: '3 seconds', amount: 1 }
+            lock_factory: null
+            cache_pool: cache.app

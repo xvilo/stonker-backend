@@ -1,0 +1,8 @@
+
+services:
+###> doctrine/doctrine-bundle ###
+  database:
+    ports:
+      # host 5432 is taken on this machine by another container; use 5433
+      - "5433:5432"
+###< doctrine/doctrine-bundle ###

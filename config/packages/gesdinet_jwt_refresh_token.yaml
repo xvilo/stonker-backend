@@ -1,0 +1,15 @@
+gesdinet_jwt_refresh_token:
+    refresh_token_class: App\Entity\RefreshToken
+    # 30-day refresh window; rotated on every use.
+    ttl: 2592000
+    single_use: true
+    # Deliver/read the refresh token as an httpOnly cookie so the SPA never
+    # has to store it in JS. The access token still comes back in the JSON body.
+    cookie:
+        enabled: true
+        same_site: lax
+        path: /api/token/refresh
+        http_only: true
+        secure: auto
+        partitioned: false
+    return_expiration: true

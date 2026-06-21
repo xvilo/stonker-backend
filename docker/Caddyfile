@@ -1,0 +1,12 @@
+{
+	{$CADDY_GLOBAL_OPTIONS}
+	frankenphp
+	# TLS is terminated at the ingress; serve plain HTTP inside the cluster.
+	auto_https off
+}
+
+:8080 {
+	root * /app/public
+	encode zstd gzip
+	php_server
+}

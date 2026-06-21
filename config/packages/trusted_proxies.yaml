@@ -1,0 +1,7 @@
+# Behind a TLS-terminating ingress, trust the forwarded headers so Symfony sees
+# the real client IP and the https scheme (needed for Secure cookies / URLs).
+# TRUSTED_PROXIES is empty in local dev (no proxies trusted) and set to the
+# cluster pod CIDR ranges in Kubernetes.
+framework:
+    trusted_proxies: '%env(default::TRUSTED_PROXIES)%'
+    trusted_headers: ['x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-forwarded-port']

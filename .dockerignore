@@ -1,0 +1,12 @@
+/vendor
+/var
+/.git
+/.env.local
+/.env.*.local
+/config/jwt/*.pem
+/tests
+/.idea
+compose.yaml
+compose.override.yaml
+Dockerfile
+.dockerignore
