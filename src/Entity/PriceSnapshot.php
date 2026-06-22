@@ -33,7 +33,9 @@ use Symfony\Component\Validator\Constraints as Assert;
 #[ORM\Index(name: 'idx_price_instrument_date', columns: ['instrument_id', 'date'])]
 #[ApiResource(
     operations: [
-        new GetCollection(),
+        // Large page size so an instrument's full history returns in one request
+        // for the detail chart (always filtered by instrument).
+        new GetCollection(paginationItemsPerPage: 5000),
         new Post(processor: ManualPriceProcessor::class),
     ],
     normalizationContext: ['groups' => ['price:read']],
