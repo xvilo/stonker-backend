@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Service;
 
+use App\Entity\BrokerConnection;
+use App\Entity\BrokerSyncRun;
 use App\Enum\BrokerType;
 use App\Enum\TransactionSource;
 use App\Import\IbkrFlexClient;
@@ -35,6 +37,21 @@ final class BrokerSyncService
     {
         $results = [];
 
+        // Persist a BrokerSyncRun row for the attempt (success or failure) and
+        // append the console-facing summary. Flushing here also saves any
+        // lastSyncAt change set on the connection above.
+        $record = function (BrokerConnection $connection, array $row) use (&$results): void {
+            $this->em->persist(new BrokerSyncRun(
+                $connection,
+                $row['fetched'],
+                $row['imported'],
+                $row['skipped'],
+                $row['error'],
+            ));
+            $this->em->flush();
+            $results[] = $row;
+        };
+
         foreach ($this->connections->findActive() as $connection) {
             if (BrokerType::IBKR !== $connection->getBrokerType()) {
                 continue; // DeGiro has no API — CSV/manual only.
@@ -47,7 +64,7 @@ final class BrokerSyncService
             } catch (\Throwable $e) {
                 $this->logger?->error('Broker credential decrypt failed', ['connection' => (string) $connection->getId()]);
                 $row['error'] = 'could not decrypt credentials';
-                $results[] = $row;
+                $record($connection, $row);
 
                 continue;
             }
@@ -56,7 +73,7 @@ final class BrokerSyncService
             $queryId = (string) ($credentials['queryId'] ?? '');
             if ('' === $token || '' === $queryId) {
                 $row['error'] = 'missing token or queryId';
-                $results[] = $row;
+                $record($connection, $row);
 
                 continue;
             }
@@ -64,7 +81,7 @@ final class BrokerSyncService
             $fetch = $this->flexClient->fetchStatement($token, $queryId);
             if (!$fetch->isSuccess()) {
                 $row['error'] = $fetch->error();
-                $results[] = $row;
+                $record($connection, $row);
 
                 continue;
             }
@@ -84,7 +101,6 @@ final class BrokerSyncService
             );
 
             $connection->setLastSyncAt(new \DateTimeImmutable());
-            $this->em->flush();
 
             $row['fetched'] = true;
             $row['imported'] = $batch->getRowsImported();
@@ -92,7 +108,7 @@ final class BrokerSyncService
             if ([] !== $batch->getErrors()) {
                 $row['error'] = sprintf('%d row error(s)', \count($batch->getErrors()));
             }
-            $results[] = $row;
+            $record($connection, $row);
         }
 
         return $results;

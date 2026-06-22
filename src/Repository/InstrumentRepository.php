@@ -29,6 +29,28 @@ class InstrumentRepository extends ServiceEntityRepository
     }
 
     /**
+     * Instruments whose symbol is an FX currency pair (e.g. "EUR.USD"). These
+     * sneak in from IBKR forex rows. We pre-filter on the dot in SQL, then
+     * narrow with the exact "XXX.YYY" shape in PHP — DB regex isn't portable,
+     * and this avoids matching tickers like "BRK.B".
+     *
+     * @return Instrument[]
+     */
+    public function findCurrencyPairs(): array
+    {
+        $candidates = $this->createQueryBuilder('i')
+            ->andWhere('i.symbol LIKE :dot')
+            ->setParameter('dot', '%.%')
+            ->getQuery()
+            ->getResult();
+
+        return array_values(array_filter(
+            $candidates,
+            static fn (Instrument $i): bool => 1 === preg_match('/^[A-Z]{3}\.[A-Z]{3}$/', $i->getSymbol()),
+        ));
+    }
+
+    /**
      * Instruments that carry an ISIN — candidates for OpenFIGI symbol resolution.
      *
      * @return Instrument[]

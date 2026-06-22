@@ -63,6 +63,23 @@ trait CsvColumnTrait
         throw new ImportException(sprintf('Unrecognised date "%s".', $value));
     }
 
+    /**
+     * IBKR statements interleave forex (assetCategory "CASH", symbol like
+     * "EUR.USD"), options, futures and other non-equity rows with the stock/ETF
+     * trades. We only model equities, so anything that isn't a stock/ETF is
+     * ignored on import. When the export omits the category we fall back to
+     * spotting the "EUR.USD" currency-pair symbol shape.
+     */
+    private function isEquityTrade(?string $assetCategory, string $symbol): bool
+    {
+        $category = strtoupper(trim((string) $assetCategory));
+        if ('' !== $category) {
+            return 'STK' === $category;
+        }
+
+        return 1 !== preg_match('/^[A-Z]{3}\.[A-Z]{3}$/', strtoupper(trim($symbol)));
+    }
+
     private function deriveSymbol(?string $symbol, ?string $isin, string $name): string
     {
         if (null !== $symbol && '' !== trim($symbol)) {

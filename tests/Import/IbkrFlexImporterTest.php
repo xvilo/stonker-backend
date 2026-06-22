@@ -53,6 +53,49 @@ final class IbkrFlexImporterTest extends TestCase
         self::assertSame('4', $sell->quantity, 'absolute quantity');
     }
 
+    public function testSkipsForexAndOtherNonEquityTrades(): void
+    {
+        $xml = <<<XML
+            <FlexQueryResponse>
+              <FlexStatements count="1">
+                <FlexStatement accountId="U123">
+                  <Trades>
+                    <Trade symbol="AAPL" assetCategory="STK" tradeID="1" tradeDate="20250310" quantity="5" tradePrice="200.00" currency="USD" buySell="BUY" description="APPLE INC"/>
+                    <Trade symbol="EUR.USD" assetCategory="CASH" tradeID="2" tradeDate="20250310" quantity="1000" tradePrice="1.08" currency="USD" buySell="BUY" description="EUR.USD"/>
+                    <Trade symbol="ESZ5" assetCategory="FUT" tradeID="3" tradeDate="20250310" quantity="1" tradePrice="5000" currency="USD" buySell="BUY" description="E-mini"/>
+                  </Trades>
+                </FlexStatement>
+              </FlexStatements>
+            </FlexQueryResponse>
+            XML;
+
+        $trades = $this->importer->parse($xml);
+
+        self::assertCount(1, $trades, 'only the stock trade is kept');
+        self::assertSame('AAPL', $trades[0]->symbol);
+    }
+
+    public function testSkipsCurrencyPairWhenAssetCategoryMissing(): void
+    {
+        $xml = <<<XML
+            <FlexQueryResponse>
+              <FlexStatements count="1">
+                <FlexStatement accountId="U123">
+                  <Trades>
+                    <Trade symbol="EUR.USD" tradeID="9" tradeDate="20250310" quantity="1000" tradePrice="1.08" currency="USD" buySell="BUY" description="EUR.USD"/>
+                    <Trade symbol="BRK.B" tradeID="10" tradeDate="20250310" quantity="2" tradePrice="400.00" currency="USD" buySell="BUY" description="BERKSHIRE HATHAWAY B"/>
+                  </Trades>
+                </FlexStatement>
+              </FlexStatements>
+            </FlexQueryResponse>
+            XML;
+
+        $trades = $this->importer->parse($xml);
+
+        self::assertCount(1, $trades, 'EUR.USD dropped, BRK.B kept');
+        self::assertSame('BRK.B', $trades[0]->symbol);
+    }
+
     public function testInvalidXmlThrows(): void
     {
         $this->expectException(ImportException::class);

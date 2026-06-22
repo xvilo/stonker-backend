@@ -50,6 +50,11 @@ final class IbkrCsvImporter implements BrokerImporterInterface
                 continue;
             }
 
+            $assetCategory = $this->col($row, ['assetcategory', 'asset category', 'assetclass', 'asset class']);
+            if (!$this->isEquityTrade($assetCategory, $symbol)) {
+                continue; // forex (EUR.USD), options, futures, etc. — not tracked.
+            }
+
             $quantity = (float) str_replace(',', '', $quantityRaw);
             if (0.0 === $quantity) {
                 continue;

@@ -11,6 +11,7 @@ use ApiPlatform\Metadata\Operation;
 use App\Entity\Account;
 use App\Entity\AccountMembership;
 use App\Entity\BrokerConnection;
+use App\Entity\BrokerSyncRun;
 use App\Entity\ImportBatch;
 use App\Entity\Invitation;
 use App\Entity\Transaction;
@@ -36,6 +37,7 @@ final class CurrentUserExtension implements QueryCollectionExtensionInterface, Q
         Account::class => '',
         Transaction::class => '.account',
         BrokerConnection::class => '.account',
+        BrokerSyncRun::class => '.account',
         ImportBatch::class => '.account',
         Invitation::class => '.account',
     ];

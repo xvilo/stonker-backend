@@ -48,6 +48,10 @@ final class IbkrFlexImporter implements BrokerImporterInterface
                 continue;
             }
 
+            if (!$this->isEquityTrade($attr('assetCategory'), $symbol)) {
+                continue; // forex (EUR.USD), options, futures, etc. — not tracked.
+            }
+
             $quantity = (float) $quantityRaw;
             if (0.0 === $quantity) {
                 continue;
