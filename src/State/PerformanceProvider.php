@@ -29,7 +29,12 @@ final class PerformanceProvider implements ProviderInterface
 
         $request = $this->requestStack->getCurrentRequest();
         $to = $this->parseDate($request?->query->get('to')) ?? new \DateTimeImmutable('today');
-        $from = $this->parseDate($request?->query->get('from')) ?? $to->modify('-2 years');
+        // Without an explicit `from` ("All" in the UI), start at the oldest
+        // still-held position rather than the account's very first trade, so
+        // long-closed positions don't stretch the chart into empty history.
+        $from = $this->parseDate($request?->query->get('from'))
+            ?? $this->valuation->currentHoldingsStartDate($account)
+            ?? $to->modify('-2 years');
         $currency = $request?->query->get('currency');
 
         $series = $this->valuation->buildSeries($account, $from, $to);

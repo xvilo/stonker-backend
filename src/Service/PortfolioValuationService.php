@@ -37,6 +37,47 @@ final class PortfolioValuationService
     }
 
     /**
+     * Start of the oldest holding the account still owns: for each instrument
+     * with a positive quantity today, the first buy after the last time its
+     * quantity hit zero. Long-closed positions (and earlier, fully-closed
+     * rounds of a re-bought instrument) don't count.
+     */
+    public function currentHoldingsStartDate(Account $account): ?\DateTimeImmutable
+    {
+        $epsilon = BigDecimal::of('0.00000001');
+        /** @var array<string, BigDecimal> $qty */
+        $qty = [];
+        /** @var array<string, \DateTimeImmutable> $start */
+        $start = [];
+
+        foreach ($this->transactions->findForAccountOrdered($account) as $tx) {
+            $iid = $tx->getInstrument()->getId()->toRfc4122();
+            $current = $qty[$iid] ?? BigDecimal::zero();
+
+            if (TransactionType::BUY === $tx->getType()) {
+                if ($current->isLessThanOrEqualTo($epsilon)) {
+                    $start[$iid] = $tx->getTradeDate();
+                }
+                $qty[$iid] = $current->plus(BigDecimal::of($tx->getQuantity()));
+            } else {
+                $qty[$iid] = $current->minus(BigDecimal::of($tx->getQuantity()));
+                if ($qty[$iid]->isLessThanOrEqualTo($epsilon)) {
+                    unset($start[$iid]);
+                }
+            }
+        }
+
+        $earliest = null;
+        foreach ($start as $date) {
+            if (null === $earliest || $date < $earliest) {
+                $earliest = $date;
+            }
+        }
+
+        return $earliest;
+    }
+
+    /**
      * @return list<CurrencySeries>
      */
     public function buildSeries(Account $account, \DateTimeImmutable $from, \DateTimeImmutable $to): array
