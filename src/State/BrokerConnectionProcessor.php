@@ -34,6 +34,10 @@ final class BrokerConnectionProcessor implements ProcessorInterface
             $data->setCredentials(null);
         }
 
+        if (!$data->isActive()) {
+            $data->setRetryUntil(null);
+        }
+
         $this->em->persist($data);
         $this->em->flush();
 

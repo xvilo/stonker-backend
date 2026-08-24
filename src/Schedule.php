@@ -3,6 +3,7 @@
 namespace App;
 
 use App\Message\FetchPricesMessage;
+use App\Message\RetryBrokerSyncMessage;
 use App\Message\RunBrokerImportsMessage;
 use Symfony\Component\Scheduler\Attribute\AsSchedule;
 use Symfony\Component\Scheduler\RecurringMessage;
@@ -32,6 +33,8 @@ class Schedule implements ScheduleProviderInterface
                 RecurringMessage::cron('30 6 * * 1-5', new FetchPricesMessage()),
                 // Pull broker statements (IBKR Flex) once a day.
                 RecurringMessage::cron('0 7 * * *', new RunBrokerImportsMessage()),
+                // Retry any connection whose last sync failed, up to 6h after it did.
+                RecurringMessage::every('30 minutes', new RetryBrokerSyncMessage()),
             )
         ;
     }

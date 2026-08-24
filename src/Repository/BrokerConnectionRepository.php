@@ -25,4 +25,21 @@ class BrokerConnectionRepository extends ServiceEntityRepository
     {
         return $this->findBy(['active' => true]);
     }
+
+    /**
+     * Active connections with an open retry window (a prior sync failed and
+     * fewer than 6h have passed since).
+     *
+     * @return BrokerConnection[]
+     */
+    public function findDueForRetry(\DateTimeImmutable $now): array
+    {
+        return $this->createQueryBuilder('c')
+            ->where('c.active = true')
+            ->andWhere('c.retryUntil IS NOT NULL')
+            ->andWhere('c.retryUntil > :now')
+            ->setParameter('now', $now)
+            ->getQuery()
+            ->getResult();
+    }
 }

@@ -10,6 +10,7 @@ use ApiPlatform\Metadata\Get;
 use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Doctrine\Orm\Filter\OrderFilter;
 use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
+use App\Enum\BrokerSyncTrigger;
 use App\Repository\BrokerSyncRunRepository;
 use Doctrine\ORM\Mapping as ORM;
 use Symfony\Bridge\Doctrine\Types\UuidType;
@@ -73,11 +74,15 @@ class BrokerSyncRun
     #[Groups(['brokersyncrun:read'])]
     private ?string $note = null;
 
+    #[ORM\Column(enumType: BrokerSyncTrigger::class)]
+    #[Groups(['brokersyncrun:read'])]
+    private BrokerSyncTrigger $trigger;
+
     #[ORM\Column]
     #[Groups(['brokersyncrun:read'])]
     private \DateTimeImmutable $createdAt;
 
-    public function __construct(BrokerConnection $brokerConnection, bool $fetched, int $imported, int $skipped, ?string $note = null)
+    public function __construct(BrokerConnection $brokerConnection, bool $fetched, int $imported, int $skipped, ?string $note = null, BrokerSyncTrigger $trigger = BrokerSyncTrigger::SCHEDULED)
     {
         $this->id = Uuid::v7();
         $this->brokerConnection = $brokerConnection;
@@ -86,6 +91,7 @@ class BrokerSyncRun
         $this->imported = $imported;
         $this->skipped = $skipped;
         $this->note = $note;
+        $this->trigger = $trigger;
         $this->createdAt = new \DateTimeImmutable();
     }
 
@@ -122,6 +128,11 @@ class BrokerSyncRun
     public function getNote(): ?string
     {
         return $this->note;
+    }
+
+    public function getTrigger(): BrokerSyncTrigger
+    {
+        return $this->trigger;
     }
 
     public function getCreatedAt(): \DateTimeImmutable

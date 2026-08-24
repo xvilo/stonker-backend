@@ -82,6 +82,11 @@ class BrokerConnection
     #[Groups(['brokerconnection:read'])]
     private ?\DateTimeImmutable $lastSyncAt = null;
 
+    /** Set when a sync fails and no retry window is open; cleared on the next success. */
+    #[ORM\Column(nullable: true)]
+    #[Groups(['brokerconnection:read'])]
+    private ?\DateTimeImmutable $retryUntil = null;
+
     #[ORM\Column]
     #[Groups(['brokerconnection:read'])]
     private \DateTimeImmutable $createdAt;
@@ -182,6 +187,32 @@ class BrokerConnection
         $this->lastSyncAt = $lastSyncAt;
 
         return $this;
+    }
+
+    public function getRetryUntil(): ?\DateTimeImmutable
+    {
+        return $this->retryUntil;
+    }
+
+    public function setRetryUntil(?\DateTimeImmutable $retryUntil): static
+    {
+        $this->retryUntil = $retryUntil;
+
+        return $this;
+    }
+
+    /**
+     * Updates the retry window after a sync attempt: a success closes any open
+     * window; a failure opens a fresh 6h window only if none is currently
+     * active, so repeated failures don't keep pushing the deadline out.
+     */
+    public function recordSyncOutcome(bool $fetched, \DateTimeImmutable $now): void
+    {
+        if ($fetched) {
+            $this->retryUntil = null;
+        } elseif (null === $this->retryUntil || $this->retryUntil < $now) {
+            $this->retryUntil = $now->modify('+6 hours');
+        }
     }
 
     public function getCreatedAt(): \DateTimeImmutable

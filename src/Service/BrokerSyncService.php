@@ -6,6 +6,7 @@ namespace App\Service;
 
 use App\Entity\BrokerConnection;
 use App\Entity\BrokerSyncRun;
+use App\Enum\BrokerSyncTrigger;
 use App\Enum\BrokerType;
 use App\Enum\TransactionSource;
 use App\Import\IbkrFlexClient;
@@ -31,86 +32,97 @@ final class BrokerSyncService
     }
 
     /**
-     * @return list<array{label: string, broker: string, fetched: bool, imported: int, skipped: int, error: ?string, raw?: ?string, tradeCount?: int}>
+     * @return list<array{label: string, broker: string, fetched: bool, imported: int, skipped: int, error: ?string, run: BrokerSyncRun, raw?: ?string, tradeCount?: int}>
      */
     public function syncAll(bool $dump = false): array
     {
         $results = [];
-
-        // Persist a BrokerSyncRun row for the attempt (success or failure) and
-        // append the console-facing summary. Flushing here also saves any
-        // lastSyncAt change set on the connection above.
-        $record = function (BrokerConnection $connection, array $row) use (&$results): void {
-            $this->em->persist(new BrokerSyncRun(
-                $connection,
-                $row['fetched'],
-                $row['imported'],
-                $row['skipped'],
-                $row['error'],
-            ));
-            $this->em->flush();
-            $results[] = $row;
-        };
 
         foreach ($this->connections->findActive() as $connection) {
             if (BrokerType::IBKR !== $connection->getBrokerType()) {
                 continue; // DeGiro has no API — CSV/manual only.
             }
 
-            $row = ['label' => $connection->getLabel(), 'broker' => 'IBKR', 'fetched' => false, 'imported' => 0, 'skipped' => 0, 'error' => null];
-
-            try {
-                $credentials = $this->encryption->decrypt($connection->getEncryptedCredentials());
-            } catch (\Throwable $e) {
-                $this->logger?->error('Broker credential decrypt failed', ['connection' => (string) $connection->getId()]);
-                $row['error'] = 'could not decrypt credentials';
-                $record($connection, $row);
-
-                continue;
-            }
-
-            $token = (string) ($credentials['token'] ?? '');
-            $queryId = (string) ($credentials['queryId'] ?? '');
-            if ('' === $token || '' === $queryId) {
-                $row['error'] = 'missing token or queryId';
-                $record($connection, $row);
-
-                continue;
-            }
-
-            $fetch = $this->flexClient->fetchStatement($token, $queryId);
-            if (!$fetch->isSuccess()) {
-                $row['error'] = $fetch->error();
-                $record($connection, $row);
-
-                continue;
-            }
-
-            $statement = $fetch->statement;
-            if ($dump) {
-                $row['raw'] = $statement;
-                $row['tradeCount'] = substr_count($statement, '<Trade ');
-            }
-
-            $batch = $this->importService->import(
-                $connection->getAccount(),
-                BrokerType::IBKR,
-                TransactionSource::FLEX,
-                $statement,
-                'flex-'.$connection->getId(),
-            );
-
-            $connection->setLastSyncAt(new \DateTimeImmutable());
-
-            $row['fetched'] = true;
-            $row['imported'] = $batch->getRowsImported();
-            $row['skipped'] = $batch->getRowsSkipped();
-            if ([] !== $batch->getErrors()) {
-                $row['error'] = sprintf('%d row error(s)', \count($batch->getErrors()));
-            }
-            $record($connection, $row);
+            $results[] = $this->syncConnection($connection, BrokerSyncTrigger::SCHEDULED, $dump);
         }
 
         return $results;
+    }
+
+    /**
+     * Runs one sync attempt against one IBKR connection: fetch, import, and
+     * record the outcome as a BrokerSyncRun (updating the connection's
+     * retry-window bookkeeping in the same flush). Shared by the scheduled
+     * loop above, the manual re-run endpoint, and the auto-retry handler.
+     *
+     * @return array{label: string, broker: string, fetched: bool, imported: int, skipped: int, error: ?string, run: BrokerSyncRun, raw?: ?string, tradeCount?: int}
+     */
+    public function syncConnection(BrokerConnection $connection, BrokerSyncTrigger $trigger, bool $dump = false): array
+    {
+        // Persist a BrokerSyncRun row for the attempt (success or failure),
+        // update the connection's retry window, and return the console/API
+        // facing summary. Flushing here also saves any lastSyncAt change set
+        // on the connection above.
+        $record = function (BrokerConnection $connection, array $row) use ($trigger): array {
+            $connection->recordSyncOutcome($row['fetched'], new \DateTimeImmutable());
+
+            $run = new BrokerSyncRun($connection, $row['fetched'], $row['imported'], $row['skipped'], $row['error'], $trigger);
+            $this->em->persist($run);
+            $this->em->flush();
+            $row['run'] = $run;
+
+            return $row;
+        };
+
+        $row = ['label' => $connection->getLabel(), 'broker' => 'IBKR', 'fetched' => false, 'imported' => 0, 'skipped' => 0, 'error' => null];
+
+        try {
+            $credentials = $this->encryption->decrypt($connection->getEncryptedCredentials());
+        } catch (\Throwable $e) {
+            $this->logger?->error('Broker credential decrypt failed', ['connection' => (string) $connection->getId()]);
+            $row['error'] = 'could not decrypt credentials';
+
+            return $record($connection, $row);
+        }
+
+        $token = (string) ($credentials['token'] ?? '');
+        $queryId = (string) ($credentials['queryId'] ?? '');
+        if ('' === $token || '' === $queryId) {
+            $row['error'] = 'missing token or queryId';
+
+            return $record($connection, $row);
+        }
+
+        $fetch = $this->flexClient->fetchStatement($token, $queryId);
+        if (!$fetch->isSuccess()) {
+            $row['error'] = $fetch->error();
+
+            return $record($connection, $row);
+        }
+
+        $statement = $fetch->statement;
+        if ($dump) {
+            $row['raw'] = $statement;
+            $row['tradeCount'] = substr_count($statement, '<Trade ');
+        }
+
+        $batch = $this->importService->import(
+            $connection->getAccount(),
+            BrokerType::IBKR,
+            TransactionSource::FLEX,
+            $statement,
+            'flex-'.$connection->getId(),
+        );
+
+        $connection->setLastSyncAt(new \DateTimeImmutable());
+
+        $row['fetched'] = true;
+        $row['imported'] = $batch->getRowsImported();
+        $row['skipped'] = $batch->getRowsSkipped();
+        if ([] !== $batch->getErrors()) {
+            $row['error'] = sprintf('%d row error(s)', \count($batch->getErrors()));
+        }
+
+        return $record($connection, $row);
     }
 }
